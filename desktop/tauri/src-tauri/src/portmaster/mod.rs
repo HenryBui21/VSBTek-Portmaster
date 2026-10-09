@@ -35,7 +35,7 @@ use log::{debug, error};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-const PORTMASTER_BASE_URL: &str = "http://127.0.0.1:817/api/v1/";
+pub(crate) const PORTMASTER_BASE_URL: &str = "http://127.0.0.1:817/api/v1/";
 
 pub trait Handler {
     fn on_connect(&mut self, cli: PortAPI);
@@ -139,7 +139,7 @@ impl<R: Runtime> PortmasterInterface<R> {
         }
     }
 
-    /// Feature functions (enable/disable certain features).
+    // Feature functions (enable/disable certain features).
 
     /// Configures whether or not our tauri app should show system
     /// notifications. This excludes connection prompts. Use
@@ -183,7 +183,7 @@ impl<R: Runtime> PortmasterInterface<R> {
         self.set_show_after_bootstrap(true);
 
         if let Err(err) = self.app.emit("portmaster:show", "") {
-            error!("failed to emit show event: {}", err.to_string());
+            error!("failed to emit show event: {}", err);
         }
     }
 
