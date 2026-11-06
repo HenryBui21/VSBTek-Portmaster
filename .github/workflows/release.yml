@@ -77,7 +77,7 @@ jobs:
       run: |
         OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
         CACHE_IMG="ghcr.io/${OWNER_LOWER}/portmaster-build-cache"
-        earthly --ci --remote-cache=$CACHE_IMG --push +installer-linux
+        earthly --output --remote-cache=$CACHE_IMG --push +installer-linux
 
     - name: Upload Linux Installers
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
