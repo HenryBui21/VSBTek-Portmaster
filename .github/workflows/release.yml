@@ -2,44 +2,56 @@ name: Release v2.X
 
 on:
   push:
-    branches:
-      - main
-      - development
-
-    tags:        
-      - v*
+    tags:
+      - 'v*'
   workflow_dispatch:
+    inputs:
+      custom_version:
+        description: 'Tùy chọn ghi đè version (ví dụ: 2.2.9)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  packages: write
 
 jobs:
   release-prep:
-    name: Prep
+    name: Build Core Artifacts
     runs-on: ubuntu-latest
     steps:
     - uses: earthly/actions-setup@43211c7a0eae5344d6d79fb4aaf209c8f8866203 # v1
       with:
         version: v0.8.0
     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      with:
+        fetch-depth: 0
 
-    - name: Log in to the Container registry
+    - name: Log in to GitHub Container Registry
       uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build all artifacts
-      run: earthly --remote-cache=ghcr.io/safing/build-cache --push +release-prep
+    - name: Build all core artifacts with Earthly
+      run: |
+        EARTHLY_ARGS=""
+        if [ -n "${{ inputs.custom_version }}" ]; then
+          EARTHLY_ARGS="--build-arg custom_version=${{ inputs.custom_version }}"
+        fi
+        CACHE_IMG="ghcr.io/${{ github.repository_owner }}/portmaster-build-cache"
+        earthly --remote-cache=$CACHE_IMG --push $EARTHLY_ARGS +release-prep
 
-    - name: Upload Dist
+    - name: Upload Dist Artifacts
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
+        name: dist-artifacts
         path: ./dist/
         if-no-files-found: error
 
   installer-linux:
-    #JOB DISABLED FOR NOW
-    if: false
-    name: Installer linux
+    name: Build Linux Package (deb/rpm)
     runs-on: ubuntu-latest
     needs: release-prep
     steps:
@@ -47,44 +59,82 @@ jobs:
       with:
         version: v0.8.0
     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      with:
+        fetch-depth: 0
 
-    - name: Log in to the Container registry
+    - name: Log in to GitHub Container Registry
       uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build linux installers
-      run: earthly --ci --remote-cache=ghcr.io/safing/build-cache --push +installer-linux
-      # --ci include --no-output flag
+    - name: Build Linux Installers
+      run: |
+        CACHE_IMG="ghcr.io/${{ github.repository_owner }}/portmaster-build-cache"
+        earthly --ci --remote-cache=$CACHE_IMG --push +installer-linux
 
-    - name: Upload Installers
+    - name: Upload Linux Installers
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
+        name: linux-installers
         path: ./dist/linux_amd64/
         if-no-files-found: error
 
   installer-windows:
-    #JOB DISABLED FOR NOW
-    if: false
-    name: Installer windows
+    name: Build Windows Package (NSIS)
     runs-on: windows-latest
     needs: release-prep
     steps:
     - name: Checkout Repository
       uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      with:
+        fetch-depth: 0
 
-    - name: Download Dist
+    - name: Download Dist Artifacts
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
       with:
+        name: dist-artifacts
         path: dist/
 
-    - name: Build windows artifacts
-      run: powershell -NoProfile -File ./packaging/windows/generate_windows_installers.ps1
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
 
-    - name: Upload Installers
+    - name: Build Windows Installers
+      shell: pwsh
+      run: |
+        powershell -NoProfile -File ./packaging/windows/generate_windows_installers.ps1
+
+    - name: Upload Windows Installers
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
+        name: windows-installers
         path: ./dist/windows_amd64/
         if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [installer-linux, installer-windows]
+    steps:
+    - name: Download All Artifacts
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      with:
+        path: artifacts/
+
+    - name: Organize Release Assets
+      run: |
+        mkdir -p release-files
+        find artifacts/ -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*setup*.exe" -o -name "*.msi" -o -name "*.zip" \) -exec cp {} release-files/ \;
+        ls -la release-files/
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d190 # v2
+      with:
+        files: release-files/*
+        generate_release_notes: true
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
