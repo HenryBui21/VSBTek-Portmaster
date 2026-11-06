@@ -40,7 +40,8 @@ jobs:
         if [ -n "${{ inputs.custom_version }}" ]; then
           EARTHLY_ARGS="--build-arg custom_version=${{ inputs.custom_version }}"
         fi
-        CACHE_IMG="ghcr.io/${{ github.repository_owner }}/portmaster-build-cache"
+        OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+        CACHE_IMG="ghcr.io/${OWNER_LOWER}/portmaster-build-cache"
         earthly --remote-cache=$CACHE_IMG --push $EARTHLY_ARGS +release-prep
 
     - name: Upload Dist Artifacts
@@ -71,7 +72,8 @@ jobs:
 
     - name: Build Linux Installers
       run: |
-        CACHE_IMG="ghcr.io/${{ github.repository_owner }}/portmaster-build-cache"
+        OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+        CACHE_IMG="ghcr.io/${OWNER_LOWER}/portmaster-build-cache"
         earthly --ci --remote-cache=$CACHE_IMG --push +installer-linux
 
     - name: Upload Linux Installers
